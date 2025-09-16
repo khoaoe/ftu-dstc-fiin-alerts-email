@@ -5,3 +5,4 @@ python-dotenv
 Jinja2
 APScheduler
 pandas
+FiinQuantX==0.1.5

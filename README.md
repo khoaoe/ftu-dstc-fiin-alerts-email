@@ -9,8 +9,19 @@ Email alerts for FTU DSTC using Gmail API (OAuth2).
    # create & activate environment
    python -m venv .venv 
    .venv/Scripts/activate
+   ```
+   
+   ```bash
    # install dependencies
    pip install -r requirements.txt
+   ```
+   
+   ```bash
+   # install FiinQuantX
+   pip install --extra-index-url https://fiinquant.github.io/fiinquantx/simple fiinquantx
+   ```
+
+   ```bash
    # Create .env
    cp .env.example .env
    ```
