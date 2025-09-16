@@ -12,3 +12,4 @@ secrets/token.json
 
 AGENTS.md
 /.github
+*.txt
