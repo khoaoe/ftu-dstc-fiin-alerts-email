@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+# Secrets
+secrets/credentials.json
+secrets/token.json
+# Bytecode & misc
+*.log
+.DS_Store
+
+AGENTS.md
+/.github

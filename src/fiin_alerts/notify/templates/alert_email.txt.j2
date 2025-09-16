@@ -1,0 +1,4 @@
+{{ alerts|length }} alert(s)
+{% for a in alerts -%}
+- {{ a.ticker }} | {{ a.event_type }} | {{ "%.2f"|format(a.price or 0) }} | {{ a.when }} | {{ a.explain }}
+{% endfor -%}

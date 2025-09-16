@@ -1,0 +1,13 @@
+<h3>{{ alerts|length }} alert(s)</h3>
+<table border="1" cellspacing="0" cellpadding="6">
+  <tr><th>Ticker</th><th>Type</th><th>Price</th><th>When</th><th>Note</th></tr>
+  {% for a in alerts %}
+  <tr>
+    <td>{{ a.ticker }}</td>
+    <td>{{ a.event_type }}</td>
+    <td>{{ "%.2f"|format(a.price or 0) }}</td>
+    <td>{{ a.when }}</td>
+    <td>{{ a.explain }}</td>
+  </tr>
+  {% endfor %}
+</table>
