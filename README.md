@@ -3,11 +3,15 @@
 Email alerts for FTU DSTC using Gmail API (OAuth2).
 
 ## Setup
-1) Put `secrets/credentials.json` (downloaded from Google Cloud) here.
+1) Put `credentials.json` (downloaded from Google Cloud) to `secrets/`.
 2) Create venv & install:
    ```bash
-   python -m venv .venv && source .venv/bin/activate
+   # create & activate environment
+   python -m venv .venv 
+   .venv/Scripts/activate
+   # install dependencies
    pip install -r requirements.txt
+   # Create .env
    cp .env.example .env
    ```
 
