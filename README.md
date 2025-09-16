@@ -43,15 +43,10 @@ python -m src.fiin_alerts.jobs.send_test_email --to you@example.com
 Run alerts job (demo uses parquet fallback if FiinQuantX not available):
 
 ```bash
-python -m src.fiin_alerts.jobs.generate_and_send_alerts --dry-run
+python -m src.fiin_alerts.jobs.generate_and_send_alerts 
 ```
 
-Notes
-
-Gmail API requires MIME RFC 2822 encoded as base64url in raw for users.messages.send.
-
-Use minimal scope https://www.googleapis.com/auth/gmail.send.
-
-In Testing mode, tokens can expire ~7 days → re-run scripts/renew_oauth.py.
-
 ---
+Ghi chú:
+- Gmail API gửi qua `users.messages.send` với `raw` chứa MIME RFC 2822 đã base64url (OAuth2).
+- Testing mode: refresh token có thể hết hạn khoảng 7 ngày; dùng `scripts/renew_oauth.py` hoặc chuyển Production để ổn định hơn.

@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, pathlib, logging
+import base64, pathlib, logging, time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -48,11 +48,28 @@ def send_email(sender: str, to: list[str], subject: str, html: str, text: str | 
     service = build("gmail", "v1", credentials=creds, cache_discovery=False)
     body = _build_message(sender, to, subject, html, text)
     try:
-        resp = service.users().messages().send(userId="me", body=body).execute()
-        msg_id = resp.get("id", "")
-        LOG.info("Email sent id=%s to=%s", msg_id, to)
-        return msg_id
-    except HttpError as e:
-        if getattr(e, "status_code", None) == 429:
-            LOG.warning("Rate limited: %s", e)
+        backoff = 1.0
+        last_error: HttpError | None = None
+        for attempt in range(6):
+            try:
+                resp = service.users().messages().send(userId="me", body=body).execute()
+                msg_id = resp.get("id", "")
+                LOG.info("Email sent id=%s to=%s", msg_id, to)
+                return msg_id
+            except HttpError as e:
+                status = getattr(e, "status_code", None)
+                if status is None:
+                    resp_obj = getattr(e, "resp", None)
+                    status = getattr(resp_obj, "status", None) if resp_obj is not None else None
+                if status in (403, 429, 500):
+                    LOG.warning("Gmail API throttled/err %s. Retry in %.1fs (attempt %d)", status, backoff, attempt + 1)
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, 64)
+                    last_error = e
+                    continue
+                raise
+        if last_error is not None:
+            raise last_error
+    except HttpError:
         raise
+    

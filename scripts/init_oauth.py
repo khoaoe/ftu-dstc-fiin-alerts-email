@@ -11,7 +11,7 @@ def main():
     assert CREDS.exists(), "Missing secrets/credentials.json"
     flow = InstalledAppFlow.from_client_secrets_file(str(CREDS), SCOPES)
     # Opens a local server and browser for consent (Installed App)
-    creds = flow.run_local_server(port=0)
+    creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     TOKEN.write_text(creds.to_json(), encoding="utf-8")
     print("Token saved to secrets/token.json")
