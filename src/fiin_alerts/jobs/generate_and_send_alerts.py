@@ -1,83 +1,209 @@
 from __future__ import annotations
+
 import argparse
 import logging
+from datetime import datetime
+from typing import Iterable, Tuple
+
+import pandas as pd
+from zoneinfo import ZoneInfo
 
 from src.fiin_alerts.config import (
-    ALERT_TO,
     ALERT_FROM,
-    SUBJECT_PREFIX,
+    ALERT_TO,
     DATA_PARQUET_PATH,
-    FQ_USERNAME,
+    DEFAULT_TICKERS,
     FQ_PASSWORD,
+    FQ_USERNAME,
+    GMAIL_MAX_RETRY,
+    HTTP_MAX_RETRY,
+    INTRADAY_BY,
+    INTRADAY_LOOKBACK_MIN,
+    RUN_MODE,
+    SUBJECT_PREFIX,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_IDS,
+    TIMEZONE,
 )
-from src.fiin_alerts.logging import setup
-from src.fiin_alerts.data.parquet_adapter import load_recent_from_parquet
 from src.fiin_alerts.data.fiinquant_adapter import fetch_intraday
-from src.fiin_alerts.signals.v4_robust import generate_alerts
+from src.fiin_alerts.data.parquet_adapter import load_recent_from_parquet
+from src.fiin_alerts.feature.ta_intraday import enrich_intraday_features
+from src.fiin_alerts.logging import setup
 from src.fiin_alerts.notify.composer import render_alert_email
 from src.fiin_alerts.notify.gmail_client import send_email
+from src.fiin_alerts.notify.telegram_client import send_telegram
+from src.fiin_alerts.signals.v4_robust import AlertItem, generate_alerts
 from src.fiin_alerts.state.store import already_sent, mark_sent
 
 LOG = logging.getLogger(__name__)
+_TZ = ZoneInfo(TIMEZONE)
+_DEFAULT_TICKERS = ["HPG", "SSI", "VCB", "VNM"]
+
+
+def _parse_tickers(raw: str | None, fallback: Iterable[str]) -> list[str]:
+    if raw:
+        items = [token.strip().upper() for token in raw.split(",") if token.strip()]
+        if items:
+            return items
+    return [ticker.upper() for ticker in fallback]
+
+
+def _escape_html(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _build_summaries(alerts: list[AlertItem]) -> Tuple[str, str]:
+    lines: list[str] = []
+    for alert in alerts[:10]:
+        price = f"{alert.price:.2f}" if alert.price is not None else "-"
+        when = alert.when or ""
+        lines.append(f"{alert.ticker} {alert.event_type} {price} {when}")
+    extra = max(len(alerts) - 10, 0)
+    if extra:
+        lines.append(f"(+{extra} more)")
+    plain = "\n".join(lines)
+    html = "<br>".join(_escape_html(line) for line in lines)
+    return plain, html
+
+
+def _floor_15(ts: datetime | None) -> str:
+    if ts is None:
+        return ""
+    local = ts if ts.tzinfo else ts.replace(tzinfo=_TZ)
+    local = local.astimezone(_TZ)
+    minute_slot = (local.minute // 15) * 15
+    floored = local.replace(minute=minute_slot, second=0, microsecond=0)
+    return floored.strftime("%Y-%m-%d %H:%M")
+
+
+def _ingest_intraday(tickers: list[str]) -> pd.DataFrame:
+    if not (FQ_USERNAME and FQ_PASSWORD):
+        return pd.DataFrame()
+    df = fetch_intraday(
+        username=FQ_USERNAME,
+        password=FQ_PASSWORD,
+        tickers=tickers,
+        minutes=INTRADAY_LOOKBACK_MIN,
+        by=INTRADAY_BY,
+        max_retry=HTTP_MAX_RETRY,
+    )
+    if df.empty:
+        return pd.DataFrame()
+    return enrich_intraday_features(df)
+
+
+def _ingest_from_parquet() -> pd.DataFrame:
+    if not DATA_PARQUET_PATH:
+        return pd.DataFrame()
+    df = load_recent_from_parquet(DATA_PARQUET_PATH)
+    if df.empty:
+        return df
+    return enrich_intraday_features(df)
+
 
 def main() -> None:
     setup()
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--tickers", default="HPG,SSI,VCB,VNM")
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--to", help="comma-separated recipients (override .env)")
-    ap.add_argument("--force-test", action="store_true")
-    args = ap.parse_args()
-    tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
 
-    # Try realtime via FiinQuantX first, fallback to parquet
-    df = fetch_intraday(FQ_USERNAME, FQ_PASSWORD, tickers) if FQ_USERNAME and FQ_PASSWORD else None
-    if df is None or df.empty:
-        df = load_recent_from_parquet(DATA_PARQUET_PATH) if DATA_PARQUET_PATH else None
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tickers", help="Comma separated tickers override")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--to", help="Comma separated recipients to override .env")
+    parser.add_argument("--force-test", action="store_true")
+    parser.add_argument("--mode", choices=["INTRADAY", "EOD", "BOTH"])
+    args = parser.parse_args()
 
-    if df is None or df.empty:
-        LOG.info("Source empty: check FiinQuant or PARQUET path/columns")
-    else:
-        LOG.info("DF shape=%s, cols=%s, head=\n%s", df.shape, list(df.columns)[:12], df.head(3))
+    mode = (args.mode or RUN_MODE).upper()
+    fallback_tickers = DEFAULT_TICKERS or _DEFAULT_TICKERS
+    tickers = _parse_tickers(args.tickers, fallback_tickers)
 
-    alerts = generate_alerts(df) if df is not None else []
+    frame = pd.DataFrame()
+    if mode in {"INTRADAY", "BOTH"}:
+        frame = _ingest_intraday(tickers)
+    if frame.empty:
+        frame = _ingest_from_parquet()
+
+    if frame.empty:
+        LOG.info("No data available for alerts generation")
+
+    alerts = generate_alerts(frame)
+
     if args.force_test:
-        from src.fiin_alerts.signals.v4_robust import AlertItem
-
-        alerts = [AlertItem("TEST", "BUY", 12345.0, "now", "forced")]
+        now_local = datetime.now(_TZ)
+        alerts = [
+            AlertItem(
+                ticker="TEST",
+                event_type="INFO",
+                price=1234.0,
+                when=now_local.strftime("%H:%M"),
+                explain="Force test alert",
+                ts=now_local,
+            )
+        ]
 
     if not alerts:
-        LOG.info("No alerts.")
+        LOG.info("No alerts to send")
         return
 
-    # de-dupe by (ticker,event_type)
-    new_alerts = []
+    deduped: list[AlertItem] = []
     keys: list[str] = []
-    for a in alerts:
-        k = f"{a.ticker}:{a.event_type}"
-        if not already_sent(k):
-            new_alerts.append(a)
-            keys.append(k)
+    for alert in alerts:
+        slot = _floor_15(alert.ts) or alert.when
+        key = f"{alert.ticker}:{alert.event_type}:{slot}"
+        if already_sent(key):
+            LOG.debug("Skip duplicate alert key=%s", key)
+            continue
+        deduped.append(alert)
+        keys.append(key)
 
-    if not new_alerts:
-        LOG.info("All alerts were duplicates. Skipping send.")
+    if not deduped:
+        LOG.info("All alerts already sent for this slot")
         return
 
-    tos_raw = args.to if args.to else ",".join(ALERT_TO)
-    tos = [e.strip() for e in tos_raw.split(",") if e.strip()]
-    if not tos:
-        LOG.error("No recipients. Set ALERT_TO in .env or pass --to")
+    recipients_raw = args.to if args.to else ",".join(ALERT_TO)
+    recipients = [addr.strip() for addr in recipients_raw.split(",") if addr.strip()]
+    if not recipients:
+        LOG.error("No recipients configured")
         return
 
-    html, text = render_alert_email(new_alerts)
-    subj = SUBJECT_PREFIX + f"{len(new_alerts)} alerts"
+    html, text = render_alert_email(deduped)
+    mode_tag = f"[{mode}] " if mode not in {"INTRADAY", "BOTH"} else f"[{mode}/{INTRADAY_BY}] "
+    subject = f"{SUBJECT_PREFIX}{mode_tag}{len(deduped)} alerts"
+
+    summary_plain, summary_html = _build_summaries(deduped)
+    LOG.info("Prepared %s alerts", len(deduped))
+    LOG.info("Summary:\n%s", summary_plain)
+
     if args.dry_run:
-        LOG.info("DRY RUN — would send to=%s subj=%s", tos, subj)
+        LOG.info("Dry-run enabled. Skipping email/telegram send")
         return
 
-    msg_id = send_email(ALERT_FROM, tos, subj, html, text)
+    try:
+        message_id = send_email(
+            ALERT_FROM,
+            recipients,
+            subject,
+            html,
+            text,
+            max_retry=GMAIL_MAX_RETRY,
+        )
+    except Exception as exc:
+        LOG.error("Email send failed: %s", exc.__class__.__name__)
+        return
+
     mark_sent(keys)
-    LOG.info("Sent alerts msg_id=%s", msg_id)
+
+    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_IDS:
+        telegram_ids = send_telegram(
+            token=TELEGRAM_BOT_TOKEN,
+            chat_ids=TELEGRAM_CHAT_IDS,
+            text=summary_html,
+            max_retry=HTTP_MAX_RETRY,
+        )
+        if telegram_ids:
+            LOG.info("Telegram notifications sent count=%s", len(telegram_ids))
+
+    LOG.info("Email sent message_id=%s", message_id)
+
 
 if __name__ == "__main__":
     main()

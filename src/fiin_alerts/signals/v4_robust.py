@@ -1,22 +1,45 @@
 from __future__ import annotations
-import pandas as pd
+
 from dataclasses import dataclass
 from datetime import datetime, time
+from typing import Any
 
-OPEN1, CLOSE1 = time(9, 0), time(11, 30)
-OPEN2, CLOSE2 = time(13, 0), time(15, 0)
+import pandas as pd
+from zoneinfo import ZoneInfo
 
-def is_market_open(ts):
-    import pandas as pd
-    if not isinstance(ts, (pd.Timestamp, datetime)):
-        return False
+from src.fiin_alerts.config import TIMEZONE
+
+OPEN1_START = time(9, 15)
+OPEN1_END = time(11, 30)
+OPEN2_START = time(13, 0)
+OPEN2_END = time(14, 30)
+
+_TZ = ZoneInfo(TIMEZONE)
+
+
+def _ensure_aware(ts: Any) -> datetime | None:
     if isinstance(ts, pd.Timestamp):
-        ts = ts.tz_localize("Asia/Ho_Chi_Minh") if ts.tzinfo is None else ts
-        ts = ts.tz_convert("Asia/Ho_Chi_Minh")
-        t = ts.time()
-    else:
-        t = ts.time()
-    return (OPEN1 <= t <= CLOSE1) or (OPEN2 <= t <= CLOSE2)
+        if pd.isna(ts):
+            return None
+        ts = ts.to_pydatetime()
+    if isinstance(ts, datetime):
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=_TZ)
+        return ts.astimezone(_TZ)
+    return None
+
+
+def is_market_open(ts: Any) -> bool:
+    localized = _ensure_aware(ts)
+    if localized is None:
+        return False
+    if localized.weekday() > 4:  # Saturday/Sunday
+        return False
+    current_time = localized.time()
+    in_morning = OPEN1_START <= current_time <= OPEN1_END
+    in_afternoon = OPEN2_START <= current_time <= OPEN2_END
+    return in_morning or in_afternoon
+
 
 @dataclass
 class AlertItem:
@@ -25,36 +48,60 @@ class AlertItem:
     price: float | None
     when: str
     explain: str
+    ts: datetime | None = None
+
 
 def generate_alerts(df: pd.DataFrame) -> list[AlertItem]:
     """Very light rule demo. Replace by your V4-Robust logic from Round 2."""
     if df is None or df.empty:
         return []
-    # Expect columns: ticker,time,close,rsi_14,sma_50,sma_200,bu,sd,fn...
-    out: list[AlertItem] = []
     if "ticker" not in df.columns:
-        return out
-    df = df.copy()
-    if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"])
-    latest = df.sort_values(["ticker", "time"]).groupby("ticker").tail(1)
+        return []
 
-    for _, r in latest.iterrows():
-        t = str(r["ticker"])
-        px = float(r.get("close", 0) or 0)
-        when = r.get("time")
-        if when is not None and not pd.isna(when) and not is_market_open(when):
+    frame = df.copy()
+    frame["ticker"] = frame["ticker"].astype(str).str.upper()
+    if "time" in frame.columns:
+        frame["time"] = pd.to_datetime(frame["time"], errors="coerce")
+
+    latest = frame.sort_values(["ticker", "time"]).groupby("ticker").tail(1)
+
+    alerts: list[AlertItem] = []
+    for _, row in latest.iterrows():
+        ticker = str(row["ticker"]).upper()
+        price_val = row.get("close")
+        price = float(price_val) if price_val is not None and not pd.isna(price_val) else None
+
+        ts_value = row.get("time")
+        ts_local = _ensure_aware(ts_value)
+        if ts_value is not None and not pd.isna(ts_value) and not is_market_open(ts_value):
             continue
-        when_str = when.strftime("%H:%M") if isinstance(when, (pd.Timestamp, datetime)) else ""
-        bu, sd = float(r.get("bu", 0) or 0), float(r.get("sd", 0) or 0)
-        fn = float(r.get("fn", 0) or 0)
+        when_str = ts_local.strftime("%H:%M") if ts_local else ""
 
-        reason = []
-        evt = None
-        if fn >= 5e9:  # ngoại mua ròng > 5 tỷ
-            evt = "BUY"; reason.append("NĐTNN mua ròng mạnh")
-        if bu > 0 and sd > 0 and (bu/sd) >= 1.5:
-            evt = evt or "BUY"; reason.append(f"BU/SD≈{bu/sd:.2f}")
-        if evt:
-            out.append(AlertItem(t, evt, px, when_str, "; ".join(reason)))
-    return out
+        bu = float(row.get("bu", 0) or 0)
+        sd = float(row.get("sd", 0) or 0)
+        fn = float(row.get("fn", 0) or 0)
+
+        reasons: list[str] = []
+        event: str | None = None
+        if fn >= 5_000_000_000:  # foreign net buying > 5B
+            event = "BUY"
+            reasons.append("Foreign net buying strong")
+        if bu > 0 and sd > 0:
+            ratio = bu / sd
+            if ratio >= 1.5:
+                event = event or "BUY"
+                reasons.append(f"BU/SD ratio {ratio:.2f}")
+
+        if event:
+            alerts.append(
+                AlertItem(
+                    ticker=ticker,
+                    event_type=event,
+                    price=price,
+                    when=when_str,
+                    explain="; ".join(reasons),
+                    ts=ts_local,
+                )
+            )
+
+    return alerts
