@@ -21,7 +21,10 @@ def _ensure_aware(ts: Any) -> datetime | None:
     if isinstance(ts, pd.Timestamp):
         if pd.isna(ts):
             return None
-        ts = ts.to_pydatetime()
+        candidate = ts.to_pydatetime()
+        if not isinstance(candidate, datetime):
+            return None
+        ts = candidate
     if isinstance(ts, datetime):
         if ts.tzinfo is None:
             return ts.replace(tzinfo=_TZ)
@@ -75,7 +78,12 @@ def generate_alerts(df: pd.DataFrame) -> list[AlertItem]:
         ts_local = _ensure_aware(ts_value)
         if ts_value is not None and not pd.isna(ts_value) and not is_market_open(ts_value):
             continue
-        when_str = ts_local.strftime("%H:%M") if ts_local else ""
+        when_str = ""
+        if ts_local is not None:
+            try:
+                when_str = ts_local.strftime("%H:%M")
+            except (AttributeError, ValueError):
+                when_str = ""
 
         bu = float(row.get("bu", 0) or 0)
         sd = float(row.get("sd", 0) or 0)
