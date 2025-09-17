@@ -1,48 +1,40 @@
-﻿# ftu-dstc-fiin-alerts-email (Email-only SMTP)
+﻿# ftu-dstc-fiin-alerts-email
 
-Hệ thống gửi cảnh báo chứng khoán FTU DSTC qua email SMTP với nhật ký/dedup SQLite.
+Email alerts for FTU DSTC using Gmail API (OAuth2).
 
-## 1. Chuẩn bị môi trường
-1. Tạo môi trường ảo và cài đặt phụ thuộc:
+## Setup
+1. Put `credentials.json` (downloaded from Google Cloud) into `secrets/`.
+2. Create a virtual environment & install dependencies:
    ```bash
    python -m venv .venv
    .\.venv\Scripts\activate
    pip install -r requirements.txt
    pip install --extra-index-url https://fiinquant.github.io/fiinquantx/simple fiinquantx
    ```
-2. Sao chép mẫu cấu hình:
+3. Copy the sample environment file and adjust values:
    ```bash
    cp .env.example .env
    ```
-3. Cập nhật `.env` với thông tin SMTP (App Password nếu dùng Gmail/Workspace) và đường dẫn SQLite.
-
-## 2. Cấu hình `.env`
-- `RUN_MODE` (`INTRADAY|EOD|BOTH`): chế độ chạy mặc định cho producer.
-- `INTRADAY_BY`, `INTRADAY_LOOKBACK_MIN`: khung dữ liệu và độ sâu ingest từ FiinQuant.
-- `TICKERS`: danh sách mã theo dõi (phân tách bằng dấu phẩy).
-- `ALERT_TO`, `ALERT_FROM`, `SUBJECT_PREFIX`: cấu hình email nhận/gửi.
-- `SMTP_*`, `MAIL_TO`, `ALERT_DB_PATH`, `SMTP_TIMEOUT`: tham số SMTP + SQLite outbox (Email-only, không cần OAuth).
-- `HTTP_MAX_RETRY`: số lần retry cho request HTTP (FiinQuant, Telegram không dùng trong mục C).
-- `DATA_PARQUET_PATH`, `FQ_USERNAME`, `FQ_PASSWORD`: nguồn dữ liệu dự phòng.
-- `TIMEZONE`: múi giờ, mặc định `Asia/Ho_Chi_Minh`.
-
-## 3. Quickstart / Smoke test
-1. Kiểm tra lớp router email + SQLite:
+4. Initialize Gmail OAuth (creates `secrets/token.json`):
    ```bash
-   python -m app.notify.alert_router_email
-   ```
-   → Nhận email demo, log ghi vào bảng `alerts_sent`/`alerts_outbox`.
-2. Dry-run producer (không gửi mail, chỉ log):
-   ```bash
-   python -m src.fiin_alerts.jobs.generate_and_send_alerts --mode INTRADAY --dry-run --force-test
-   ```
-3. Gửi thử SMTP thực tế (tùy chọn override người nhận):
-   ```bash
-   python -m src.fiin_alerts.jobs.send_test_email --to you@example.com
+   python scripts/init_oauth.py
    ```
 
-## 4. Scheduler Email-only
-Chạy APScheduler để tự động sinh và gửi cảnh báo qua `AlertRouterEmail`:
+## Configuration
+Update `.env` to control runtime behaviour. Key settings:
+- `RUN_MODE` (`INTRADAY|EOD|BOTH`) ? default job mode.
+- `INTRADAY_BY` (`1m|5m|15m`) and `INTRADAY_LOOKBACK_MIN` ? sampling interval and lookback for FiinQuant pulls.
+- `TICKERS` ? default comma-separated tickers.
+- `ALERT_TO`, `ALERT_FROM`, `SUBJECT_PREFIX` ? email routing.
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_IDS` ? optional Telegram delivery.
+- `GMAIL_MAX_RETRY`, `HTTP_MAX_RETRY` ? retry budgets for Gmail/HTTP clients.
+- `DATA_PARQUET_PATH`, `FQ_USERNAME`, `FQ_PASSWORD` ? parquet fallback and FiinQuant credentials.
+
+Set `TIMEZONE` if you need something other than `Asia/Ho_Chi_Minh`.
+
+## Running Jobs
+### Dry run / development
+Use `--dry-run` to simulate the workflow without sending email or Telegram messages:
 ```bash
 python -m app.schedule.jobs_notify
 ```
@@ -51,18 +43,29 @@ python -m app.schedule.jobs_notify
 - `timezone` đọc từ `.env` (mặc định `Asia/Ho_Chi_Minh`), `coalesce=True`, `max_instances=1`.
 - Alert được dedup theo hash `ticker|event|slot` và log đầy đủ vào SQLite.
 
-## 5. Kiến trúc & triển khai
-- `src/fiin_alerts/jobs/generate_and_send_alerts.produce_email_alerts()` chỉ tạo danh sách `Alert` cho router, mapping sự kiện `BUY_NEW → Mua mới`, `SELL_TP → Bán chốt lời`, `RISK → Cảnh báo rủi ro`.
-- `app/notify/alert_router_email.AlertRouterEmail` gửi qua `smtplib`, retry/backoff, lưu nhật ký vào `alerts_outbox`, dedup qua `alerts_sent`.
-- `src/fiin_alerts/jobs/send_test_email` sử dụng cùng router, không cần Gmail client.
-- Module OAuth/Telegram vẫn còn trong repo để tham chiếu lịch sử nhưng không còn được gọi trong luồng mục C.
+The `--force-test` flag injects a dummy alert so you can verify rendering.
 
-## 6. Giám sát & gỡ lỗi
-- Kiểm tra outbox: `sqlite3 alerts.db "select id, ticker, event, status, resp_code, resp_body from alerts_outbox order by id desc limit 10"`.
-- Đổi `LOG_LEVEL=DEBUG` trong `.env` để xem chi tiết retry/backoff.
-- Nếu SMTP lỗi tạm thời, router tự retry exponential; duplicate bị bỏ qua nhờ hash `ticker|event|slot`.
+### Regular execution
+```bash
+python -m src.fiin_alerts.jobs.generate_and_send_alerts [--mode INTRADAY|EOD|BOTH] [--tickers VNM,HPG]
+```
+- When `RUN_MODE=BOTH`, the job will try intraday ingest first, then fall back to parquet.
+- Alerts are de-duplicated per 15-minute slot and logged before sending.
+- Telegram notifications are sent when both bot token and chat IDs are configured.
 
-## 7. Rollback
-- Khôi phục các file đã chỉnh sửa (`app/notify/alert_router_email.py`, `app/schedule/jobs_notify.py`, `src/fiin_alerts/jobs/generate_and_send_alerts.py`, `src/fiin_alerts/jobs/send_test_email.py`, `.env.example`, `requirements.txt`, `README.md`, `src/fiin_alerts/config.py`).
-- Cài lại các gói Google nếu cần dùng lại Gmail API OAuth (trước đây: `google-api-python-client`, `google-auth-httplib2`, `google-auth-oauthlib`).
-- Phục hồi tài liệu OAuth cũ (`scripts/init_oauth.py`, `scripts/renew_oauth.py`) nếu muốn quay lại mô hình trước.
+### Scheduler
+A blocking APScheduler runner triggers intraday jobs every 15 minutes during HOSE trading hours and an end-of-day pass at 15:02 (Mon?Fri):
+```bash
+python -m src.fiin_alerts.jobs.scheduler
+```
+Ensure the virtual environment is active so `python` resolves dependencies.
+
+### Gmail smoke test
+```bash
+python -m src.fiin_alerts.jobs.send_test_email --to you@example.com
+```
+
+## Notes
+- Gmail API sends via `users.messages.send` with base64url MIME payloads.
+- In OAuth testing mode, refresh tokens may expire after ~7 days; run `scripts/renew_oauth.py` or switch the Google project to Production.
+- According to Byterover memory layer, always keep credentials out of version control.
