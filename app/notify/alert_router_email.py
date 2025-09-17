@@ -214,11 +214,14 @@ class EmailChannel:
         window = alert.window_label()
         extras_json = json.dumps(alert.extras, ensure_ascii=True, separators=(",", ":")) if alert.extras else "{}"
         price_text = f"{alert.price:.2f}" if alert.price is not None else "-"
-        subject = f"{self.subject_prefix}{alert.ticker} {alert.event} [{self.env_name}]"
+        label = alert.extras.get("event_label") if alert.extras else None
+        display_event = label or alert.event
+        subject = f"{self.subject_prefix}{alert.ticker} {display_event} [{self.env_name}]"
         html = f"""
         <html>
           <body>
-            <h3>Alert: {alert.ticker} - {alert.event}</h3>
+            <h3>Alert: {alert.ticker} - {display_event}</h3>
+            <p><strong>Event code:</strong> {alert.event}</p>
             <p><strong>Window:</strong> {window}</p>
             <p><strong>Price:</strong> {price_text}</p>
             <p><strong>Reason:</strong> {alert.reason}</p>
@@ -227,7 +230,8 @@ class EmailChannel:
         </html>
         """
         plain = (
-            f"Alert {alert.ticker} {alert.event}\n"
+            f"Alert {alert.ticker} {display_event}\n"
+            f"Event code: {alert.event}\n"
             f"Window: {window}\n"
             f"Price: {price_text}\n"
             f"Reason: {alert.reason}\n"
@@ -349,9 +353,8 @@ class AlertRouterEmail:
 
     @staticmethod
     def compute_hash(alert: Alert) -> str:
-        slot_start = alert.slot_start.astimezone(timezone.utc).isoformat()
-        slot_end = alert.slot_end.astimezone(timezone.utc).isoformat()
-        content = f"{alert.ticker}|{alert.event}|{slot_start}|{slot_end}|v1"
+        slot = alert.slot_start.astimezone(timezone.utc).replace(second=0, microsecond=0).isoformat()
+        content = f"{alert.ticker}|{alert.event}|{slot}"
         return hashlib.sha1(content.encode("utf-8")).hexdigest()
 
     def send_alert(self, alert: Alert) -> bool:

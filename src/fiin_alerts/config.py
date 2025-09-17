@@ -46,10 +46,6 @@ INTRADAY_BY = _intraday_by
 INTRADAY_LOOKBACK_MIN = max(_read_int("INTRADAY_LOOKBACK_MIN", 45), 1)
 DEFAULT_TICKERS = [ticker.upper() for ticker in _read_csv("TICKERS")]
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_IDS = _read_csv("TELEGRAM_CHAT_IDS")
-
-GMAIL_MAX_RETRY = max(_read_int("GMAIL_MAX_RETRY", 5), 1)
 HTTP_MAX_RETRY = max(_read_int("HTTP_MAX_RETRY", 5), 1)
 
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Ho_Chi_Minh")

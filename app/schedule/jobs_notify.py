@@ -52,15 +52,22 @@ def _start_scheduler() -> None:
     setup_logging()
     scheduler = BlockingScheduler(timezone=_TZ)
     router = AlertRouterEmail()
-    scheduler.add_job(
-        run_signals_and_notify,
-        CronTrigger.from_crontab("*/15 * * * *", timezone=_TZ),
-        id="notify_15m",
-        kwargs={"mode": "INTRADAY", "router": router},
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=120,
-    )
+    intraday_schedules = [
+        ("notify_am", {"hour": "9-10", "minute": "*/15"}),
+        ("notify_late_morning", {"hour": 11, "minute": "0,15,30"}),
+        ("notify_pm", {"hour": 13, "minute": "*/15"}),
+        ("notify_late_pm", {"hour": 14, "minute": "0,15,30"}),
+    ]
+    for job_id, cron_kwargs in intraday_schedules:
+        scheduler.add_job(
+            run_signals_and_notify,
+            CronTrigger(timezone=_TZ, **cron_kwargs),
+            id=job_id,
+            kwargs={"mode": "INTRADAY", "router": router},
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=120,
+        )
     scheduler.add_job(
         run_signals_and_notify,
         CronTrigger(hour=15, minute=0, timezone=_TZ),
