@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import datetime
-from typing import Iterable, Tuple
+from datetime import datetime, timedelta
+from typing import Any, Iterable, Tuple
+
+from app.notify.alert_router_email import Alert as NotifyAlert
 
 import pandas as pd
 from zoneinfo import ZoneInfo
@@ -76,6 +78,30 @@ def _floor_15(ts: datetime | None) -> str:
     return floored.strftime("%Y-%m-%d %H:%M")
 
 
+def _normalize_event(event: str) -> str:
+    mapping = {"BUY": "BUY_NEW", "SELL": "SELL_TP"}
+    upper = (event or "").upper()
+    return mapping.get(upper, upper or "INFO")
+
+
+def _resolve_tickers_input(raw: Iterable[str] | None, fallback: Iterable[str]) -> list[str]:
+    if raw:
+        resolved = [token.strip().upper() for token in raw if token and token.strip()]
+        if resolved:
+            return resolved
+    return [ticker.upper() for ticker in fallback]
+
+
+def _slot_bounds(ts: datetime | None, fallback: datetime, window_minutes: int = 15) -> tuple[datetime, datetime]:
+    base = ts if ts is not None else fallback
+    local = base if base.tzinfo else base.replace(tzinfo=_TZ)
+    local = local.astimezone(_TZ)
+    minute_slot = (local.minute // window_minutes) * window_minutes
+    slot_start = local.replace(minute=minute_slot, second=0, microsecond=0)
+    slot_end = slot_start + timedelta(minutes=window_minutes)
+    return slot_start, slot_end
+
+
 def _ingest_intraday(tickers: list[str]) -> pd.DataFrame:
     if not (FQ_USERNAME and FQ_PASSWORD):
         return pd.DataFrame()
@@ -99,6 +125,56 @@ def _ingest_from_parquet() -> pd.DataFrame:
     if df.empty:
         return df
     return enrich_intraday_features(df)
+
+
+def produce_email_alerts(
+    tickers: Iterable[str] | None = None,
+    mode: str | None = None,
+    as_of: datetime | None = None,
+) -> list[NotifyAlert]:
+    effective_mode = (mode or RUN_MODE).upper()
+    fallback = DEFAULT_TICKERS or _DEFAULT_TICKERS
+    resolved_tickers = _resolve_tickers_input(tickers, fallback)
+    frame = pd.DataFrame()
+    if effective_mode in {"INTRADAY", "BOTH"}:
+        frame = _ingest_intraday(resolved_tickers)
+    if frame.empty and effective_mode in {"EOD", "BOTH"}:
+        frame = _ingest_from_parquet()
+    alert_items = generate_alerts(frame)
+    if not alert_items:
+        return []
+    reference_time = as_of.astimezone(_TZ) if as_of else datetime.now(_TZ)
+    seen: set[tuple[str, str, datetime]] = set()
+    results: list[NotifyAlert] = []
+    for item in alert_items:
+        raw_event = item.event_type or ""
+        normalized_event = _normalize_event(raw_event)
+        slot_start, slot_end = _slot_bounds(item.ts, reference_time)
+        dedup_key = (item.ticker.upper(), normalized_event, slot_start)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        reason = item.explain or f"{normalized_event} signal"
+        extras: dict[str, Any] = {
+            "mode": effective_mode,
+            "source": "v4_robust",
+            "when": item.when,
+            "raw_event": raw_event,
+        }
+        if item.price is not None:
+            extras["price_hint"] = item.price
+        results.append(
+            NotifyAlert(
+                ticker=item.ticker,
+                event=normalized_event,
+                slot_start=slot_start,
+                slot_end=slot_end,
+                price=item.price,
+                reason=reason,
+                extras=extras,
+            )
+        )
+    return results
 
 
 def main() -> None:
