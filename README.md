@@ -54,14 +54,14 @@ Ghi chú:
 - Cảnh báo được khử trùng lặp theo slot 15 phút (`ticker:event:YYYY-MM-DD HH:MM`).
 - Nếu cấu hình Telegram đầy đủ, tối đa 10 cảnh báo đầu tiên sẽ được gửi dạng HTML gọn nhẹ.
 
-## 5. Lên lịch tự động
-Sử dụng scheduler để chạy tự động trong giờ giao dịch HOSE (các ngày làm việc):
+## 5. Lich notify tu dong
+Su dung scheduler moi dua tren APScheduler de chay pipeline va lop notify email-only:
 ```bash
-python -m src.fiin_alerts.jobs.scheduler
+python -m app.schedule.jobs_notify
 ```
-- Cron intraday: mỗi 15 phút từ 09:15–11:30 và 13:00–14:30.
-- Cron cuối ngày: 15:02.
-- Đảm bảo kích hoạt môi trường ảo trước khi chạy.
+- Cron intraday: chay moi 15 phut (00,15,30,45) trong mui gio Asia/Ho_Chi_Minh.
+- Cron cuoi ngay: 15:00 (coalesce truoc khi tat).
+- max_instances=1 va coalesce=True tranh chong job. Bam Ctrl+C de dung an toan.
 
 ## 6. Kiểm tra Gmail nhanh
 ```bash
@@ -72,3 +72,9 @@ python -m src.fiin_alerts.jobs.send_test_email --to you@example.com
 - Gmail API sử dụng `users.messages.send` với payload MIME base64url.
 - Nếu dự án Google ở chế độ “Testing”, refresh token có thể hết hạn sau ~7 ngày; dùng `scripts/renew_oauth.py` hoặc chuyển sang chế độ Production.
 - Theo lớp ghi nhớ của Byterover, không commit bất kỳ thông tin nhạy cảm nào (token, mật khẩu, chat ID) lên repo.
+
+## 8. Notify email quickstart
+Setup -> cap nhat `.env` voi SMTP_HOST, SMTP_USER, SMTP_PASS, MAIL_TO, ALERT_DB_PATH; cai dat `pip install -r requirements.txt`.
+Run -> `python -m app.notify.alert_router_email` cho phep kiem tra mot lenh, hoac `python -m app.schedule.jobs_notify` de bat APScheduler (Ctrl+C de dung).
+Test -> dung mock smtplib hoac chay demo 2 lan de dam bao idempotent; kiem tra `sqlite3 alerts.db "select hash,status from alerts_outbox order by id desc limit 5"`.
+Rollback -> xoa file `alerts.db`, xoa thu muc `app/notify` va `app/schedule`, go bo import `Alert as NotifyAlert` va ham `produce_email_alerts` neu khong can notify.
