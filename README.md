@@ -3,50 +3,65 @@
 Email alerts for FTU DSTC using Gmail API (OAuth2).
 
 ## Setup
-1) Put `credentials.json` (downloaded from Google Cloud) to `secrets/`.
-2) Create venv & install:
+1. Put `credentials.json` (downloaded from Google Cloud) into `secrets/`.
+2. Create a virtual environment & install dependencies:
    ```bash
-   # create & activate environment
-   python -m venv .venv 
-   .venv/Scripts/activate
-   ```
-   
-   ```bash
-   # install dependencies
+   python -m venv .venv
+   .\.venv\Scripts\activate
    pip install -r requirements.txt
-   ```
-   
-   ```bash
-   # install FiinQuantX
    pip install --extra-index-url https://fiinquant.github.io/fiinquantx/simple fiinquantx
    ```
-
+3. Copy the sample environment file and adjust values:
    ```bash
-   # Create .env
    cp .env.example .env
    ```
+4. Initialize Gmail OAuth (creates `secrets/token.json`):
+   ```bash
+   python scripts/init_oauth.py
+   ```
 
-Initialize OAuth (Testing OK):
+## Configuration
+Update `.env` to control runtime behaviour. Key settings:
+- `RUN_MODE` (`INTRADAY|EOD|BOTH`) ? default job mode.
+- `INTRADAY_BY` (`1m|5m|15m`) and `INTRADAY_LOOKBACK_MIN` ? sampling interval and lookback for FiinQuant pulls.
+- `TICKERS` ? default comma-separated tickers.
+- `ALERT_TO`, `ALERT_FROM`, `SUBJECT_PREFIX` ? email routing.
+- `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_IDS` ? optional Telegram delivery.
+- `GMAIL_MAX_RETRY`, `HTTP_MAX_RETRY` ? retry budgets for Gmail/HTTP clients.
+- `DATA_PARQUET_PATH`, `FQ_USERNAME`, `FQ_PASSWORD` ? parquet fallback and FiinQuant credentials.
 
+Set `TIMEZONE` if you need something other than `Asia/Ho_Chi_Minh`.
+
+## Running Jobs
+### Dry run / development
+Use `--dry-run` to simulate the workflow without sending email or Telegram messages:
 ```bash
-python scripts/init_oauth.py
+python -m src.fiin_alerts.jobs.generate_and_send_alerts --mode INTRADAY --dry-run --force-test
 ```
 
-This generates secrets/token.json (refresh token may expire ~7 days in Testing).
+The `--force-test` flag injects a dummy alert so you can verify rendering.
 
-Send a test email:
+### Regular execution
+```bash
+python -m src.fiin_alerts.jobs.generate_and_send_alerts [--mode INTRADAY|EOD|BOTH] [--tickers VNM,HPG]
+```
+- When `RUN_MODE=BOTH`, the job will try intraday ingest first, then fall back to parquet.
+- Alerts are de-duplicated per 15-minute slot and logged before sending.
+- Telegram notifications are sent when both bot token and chat IDs are configured.
 
+### Scheduler
+A blocking APScheduler runner triggers intraday jobs every 15 minutes during HOSE trading hours and an end-of-day pass at 15:02 (Mon?Fri):
+```bash
+python -m src.fiin_alerts.jobs.scheduler
+```
+Ensure the virtual environment is active so `python` resolves dependencies.
+
+### Gmail smoke test
 ```bash
 python -m src.fiin_alerts.jobs.send_test_email --to you@example.com
 ```
 
-Run alerts job (demo uses parquet fallback if FiinQuantX not available):
-
-```bash
-python -m src.fiin_alerts.jobs.generate_and_send_alerts 
-```
-
----
-Ghi chú:
-- Gmail API gửi qua `users.messages.send` với `raw` chứa MIME RFC 2822 đã base64url (OAuth2).
-- Testing mode: refresh token có thể hết hạn khoảng 7 ngày; dùng `scripts/renew_oauth.py` hoặc chuyển Production để ổn định hơn.
+## Notes
+- Gmail API sends via `users.messages.send` with base64url MIME payloads.
+- In OAuth testing mode, refresh tokens may expire after ~7 days; run `scripts/renew_oauth.py` or switch the Google project to Production.
+- According to Byterover memory layer, always keep credentials out of version control.
