@@ -1,4 +1,4 @@
-﻿# ftu-dstc-fiin-alerts-email
+# ftu-dstc-fiin-alerts-email
 
 Email alerts for FTU DSTC using Gmail API (OAuth2).
 
