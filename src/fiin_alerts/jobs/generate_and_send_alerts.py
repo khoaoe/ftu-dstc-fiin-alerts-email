@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+from datetime import datetime
 from typing import Iterable, List
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from src.fiin_alerts.config import (
@@ -11,6 +13,7 @@ from src.fiin_alerts.config import (
     ALERT_TO,
     DATA_PARQUET_PATH,
     DEFAULT_TICKERS,
+    TIMEZONE,
     FQ_PASSWORD,
     FQ_USERNAME,
     INTRADAY_BY,
@@ -68,9 +71,10 @@ def _fetch_source_data(tickers: List[str]) -> pd.DataFrame:
 def _dedupe_alerts(alerts: List[AlertItem], mode: str) -> tuple[list[AlertItem], list[str]]:
     deduped: list[AlertItem] = []
     keys: list[str] = []
+    today = datetime.now(ZoneInfo(TIMEZONE)).date().isoformat()
     for alert in alerts:
-        slot = alert.when or mode
-        key = f"{alert.ticker}:{alert.event_type}:{slot}"
+        slot = (alert.when or mode or "now")
+        key = f"{today}:{alert.ticker}:{alert.event_type}:{slot}"
         if already_sent(key):
             LOG.debug("Skip duplicate alert key=%s", key)
             continue
@@ -94,7 +98,7 @@ def _log_summary(alerts: list[AlertItem]) -> None:
     extra = max(len(alerts) - len(lines), 0)
     if extra:
         lines.append(f"(+{extra} more)")
-    LOG.info("Summary: %s", "".join(lines))
+    LOG.info("Summary: %s", " | ".join(lines))
 
 def run_once(
     mode: str | None = None,

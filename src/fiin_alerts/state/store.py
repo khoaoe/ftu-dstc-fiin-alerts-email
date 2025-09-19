@@ -2,10 +2,12 @@ from __future__ import annotations
 import sqlite3, pathlib, datetime as dt
 from typing import Iterable
 
-DB = pathlib.Path("alerts_state.sqlite")
+from src.fiin_alerts.config import ALERT_DB_PATH
+
+DB = pathlib.Path(ALERT_DB_PATH)
 
 def _conn():
-    c = sqlite3.connect(DB)
+    c = sqlite3.connect(str(DB))
     c.execute("""CREATE TABLE IF NOT EXISTS sent(
         k TEXT PRIMARY KEY,
         ts TEXT NOT NULL

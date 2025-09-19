@@ -47,3 +47,4 @@ INTRADAY_LOOKBACK_MIN = max(_read_int("INTRADAY_LOOKBACK_MIN", 45), 1)
 DEFAULT_TICKERS = [ticker.upper() for ticker in _read_csv("TICKERS", "HPG,SSI,VCB,VNM")]
 
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Ho_Chi_Minh")
+ALERT_DB_PATH = os.getenv("ALERT_DB_PATH", "alerts_state.sqlite")

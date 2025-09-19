@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 import pandas as pd
 import logging
 
@@ -15,14 +16,26 @@ def fetch_intraday(username: str, password: str, tickers: list[str], minutes: in
     since = (datetime.now() - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M")
 
     client = fq.FiinSession(username=username, password=password).login()
-    raw = client.Fetch_Trading_Data(
-        realtime=False,
-        tickers=tickers,
-        fields=["open","high","low","close","volume","bu","sd","fb","fs","fn"],
-        adjusted=True,
-        by=by,
-        from_date=since,
-    ).get_data()
+    last_exc: Exception | None = None
+    raw = None
+    for attempt in range(3):
+        try:
+            raw = client.Fetch_Trading_Data(
+                realtime=True,
+                tickers=tickers,
+                fields=["open","high","low","close","volume","bu","sd","fb","fs","fn"],
+                adjusted=True,
+                by=by,
+                from_date=since,
+            ).get_data()
+            break
+        except Exception as exc:
+            last_exc = exc
+            LOG.warning("FiinQuant Fetch_Trading_Data failed (attempt %s): %s", attempt + 1, exc)
+            time.sleep(1.0 * (attempt + 1))
+    else:
+        if last_exc is not None:
+            LOG.warning("FiinQuant fetch failed after retries: %s", last_exc)
 
     # ---- Normalize to DataFrame (no boolean context on DataFrame!) ----
     df: pd.DataFrame
