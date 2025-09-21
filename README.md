@@ -49,19 +49,22 @@ Tiếp tục cấu hình Gmail OAuth:
 | `TIMEZONE` | Múi giờ cho scheduler |
 | `ALERT_DB_PATH` | Đường dẫn SQLite lưu trạng thái gửi |
 
-## 🚀 5. Chạy & kiểm thử nhanh
+## 🚀 5. kiểm thử nhanh
 1. **Test Gmail API**
    ```bash
    python -m src.fiin_alerts.jobs.send_test_email --to you@example.com
    ```
    Thêm `--dry-run` để xem subject/recipients mà không gửi.
-2. **Sinh alert và gửi một lượt**
+
+## 📦 6. Sử dụng thực tế
+1. **Sinh alert và gửi một lượt**
    ```bash
    python -m src.fiin_alerts.jobs.generate_and_send_alerts --mode INTRADAY --force-test
    ```
    - `--dry-run` để chỉ log email.
    - `--to` để override danh sách nhận.
-3. **Scheduler sản xuất**
+
+2. **Scheduler (đợi tín hiệu để gửi)**
    ```bash
    python -m app.schedule.jobs_notify
    ```
