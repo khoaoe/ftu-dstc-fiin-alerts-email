@@ -29,7 +29,7 @@ def _read_int(name: str, default: int) -> int:
 
 ALERT_TO = _read_csv("ALERT_TO")
 ALERT_FROM = os.getenv("ALERT_FROM", "me")
-SUBJECT_PREFIX = os.getenv("SUBJECT_PREFIX", "[FTU-DSTC Alerts] ")
+SUBJECT_PREFIX = os.getenv("SUBJECT_PREFIX", "[Trade Signal Alerts] ")
 
 DATA_PARQUET_PATH = os.getenv("DATA_PARQUET_PATH")
 FQ_USERNAME = os.getenv("FQ_USERNAME")
