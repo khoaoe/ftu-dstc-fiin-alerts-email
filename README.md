@@ -1,17 +1,27 @@
-# ftu-dstc-fiin-alerts-email (Gmail API)
+﻿# 📧 FTU-DSTC Fiin Alerts via Gmail API
 
-## 1. Tổng quan
-- Ứng dụng sinh cảnh báo chứng khoán FTU DSTC và gửi qua Gmail API (OAuth2).
-- Lịch chạy: intraday mỗi 15 phút trong giờ HOSE, thêm lượt cuối ngày 15:00 (múi giờ `Asia/Ho_Chi_Minh`).
-- Tránh gửi trùng bằng cách lưu dấu `ticker:event:slot` trong SQLite (`alerts_state.sqlite`).
+> Giải pháp gửi cảnh báo chứng khoán tự động của đội FTU DSTC, sử dụng Gmail API (OAuth2) và dữ liệu từ FiinQuantX.
 
-## 2. Thành phần chính
-- `src/fiin_alerts/jobs/generate_and_send_alerts.py`: kết nối nguồn dữ liệu, tạo cảnh báo, render email, gọi Gmail API.
-- `src/fiin_alerts/notify/gmail_client.py`: bọc Gmail API (`users.messages.send`) với tự động refresh token.
-- `src/fiin_alerts/jobs/send_test_email.py`: script gửi email thử nhanh.
-- `app/schedule/jobs_notify.py`: APScheduler lập lịch chạy `generate_and_send_alerts.run_once` theo khung intraday/EOD.
+---
 
-## 3. Chuẩn bị môi trường
+## 🧭 1. Tổng quan
+- Tạo tín hiệu mua/bán, dựng email HTML/TXT và gửi qua Gmail.
+- Lịch chạy: intraday mỗi 15 phút trong giờ HOSE, thêm lượt chốt ngày lúc 15:00 (múi giờ `Asia/Ho_Chi_Minh`).
+- Cơ chế tránh gửi lặp: lưu `ticker:event:slot` trong SQLite (`alerts_state.sqlite`).
+
+## 🧱 2. Kiến trúc chính
+| Module | Vai trò |
+| --- | --- |
+| `src/fiin_alerts/jobs/generate_and_send_alerts.py` | Thu thập dữ liệu, tạo alert, render email, gửi Gmail API |
+| `src/fiin_alerts/notify/gmail_client.py` | Bao bọc Gmail API `users.messages.send`, quản lý OAuth token |
+| `src/fiin_alerts/jobs/send_test_email.py` | Gửi email thử nhanh, tiện kiểm tra OAuth |
+| `app/schedule/jobs_notify.py` | APScheduler, lập lịch intraday/EOD cho `run_once` |
+| `src/fiin_alerts/signals/v12_strategy.py` | Logic screener V12 (chuẩn hóa dữ liệu, backtest, trade log) |
+| `src/fiin_alerts/jobs/export_v12_signals.py` | CLI xuất CSV tín hiệu V12 theo khoảng thời gian |
+
+_Version V4 (`src/fiin_alerts/signals/v4_robust.py`) vẫn giữ để tham chiếu hoặc fallback._
+
+## ⚙️ 3. Chuẩn bị môi trường
 ```bash
 python -m venv .venv
 .\.venv\Scripts\activate
@@ -19,51 +29,69 @@ pip install -r requirements.txt
 pip install --extra-index-url https://fiinquant.github.io/fiinquantx/simple fiinquantx
 cp .env.example .env
 ```
-Tiếp theo:
-1. Tạo project Google Cloud và tải `credentials.json` (Gmail API OAuth client) vào thư mục `secrets/`.
+Tiếp tục cấu hình Gmail OAuth:
+1. Tạo Google Cloud project, bật Gmail API, tải `credentials.json` vào thư mục `secrets/`.
 2. Khởi tạo token lần đầu:
    ```bash
    python scripts/init_oauth.py
    ```
-   -> sinh `secrets/token.json` dùng cho các lần gửi tiếp theo.
+   Sinh `secrets/token.json` dùng cho các lần gọi kế tiếp.
 
-## 4. Cấu hình `.env`
-- `ALERT_TO`, `ALERT_FROM`, `SUBJECT_PREFIX`: cấu hình email nhận/gửi (đặt `ALERT_FROM=me` để dùng account vừa ủy quyền).
-- `RUN_MODE` (`INTRADAY|EOD|BOTH`), `INTRADAY_BY`, `INTRADAY_LOOKBACK_MIN`: tham số lấy dữ liệu realtime từ FiinQuantX.
-- `TICKERS`: danh sách mã mặc định.
-- `DATA_PARQUET_PATH`: fallback parquet khi không truy cập được realtime.
-- `FQ_USERNAME`, `FQ_PASSWORD`: thông tin FiinQuantX (bỏ trống nếu không dùng).
-- `TIMEZONE`: múi giờ dùng cho scheduler.
+## 🧾 4. Biến môi trường `.env`
+| Biến | Ý nghĩa |
+| --- | --- |
+| `ALERT_TO`, `ALERT_FROM`, `SUBJECT_PREFIX` | Danh sách người nhận, người gửi, tiền tố subject |
+| `RUN_MODE` (`INTRADAY|EOD|BOTH`) | Kiểu chạy mặc định cho scheduler / CLI |
+| `INTRADAY_BY`, `INTRADAY_LOOKBACK_MIN` | Tần suất & độ dài lookback khi lấy realtime FiinQuantX |
+| `TICKERS` | Danh sách mã mặc định |
+| `DATA_PARQUET_PATH` | Parquet fallback khi không có realtime |
+| `FQ_USERNAME`, `FQ_PASSWORD` | Thông tin truy cập FiinQuantX |
+| `TIMEZONE` | Múi giờ cho scheduler |
+| `ALERT_DB_PATH` | Đường dẫn SQLite lưu trạng thái gửi |
 
-## 5. Kiểm thử & vận hành
-1. **Gửi thử Gmail API**
+## 🚀 5. Chạy & kiểm thử nhanh
+1. **Test Gmail API**
    ```bash
    python -m src.fiin_alerts.jobs.send_test_email --to you@example.com
    ```
-   Thêm `--dry-run` nếu chỉ muốn hiển thị subject/recipients.
-2. **Tạo cảnh báo và gửi một lượt**
+   Thêm `--dry-run` để xem subject/recipients mà không gửi.
+2. **Sinh alert và gửi một lượt**
    ```bash
    python -m src.fiin_alerts.jobs.generate_and_send_alerts --mode INTRADAY --force-test
    ```
-   - Thêm `--dry-run` để kiểm tra nội dung email nhưng không gửi.
-   - Dùng `--to` để override danh sách nhận.
-3. **Chạy scheduler**
+   - `--dry-run` để chỉ log email.
+   - `--to` để override danh sách nhận.
+3. **Scheduler sản xuất**
    ```bash
    python -m app.schedule.jobs_notify
    ```
-   - Intraday: 09:15–10:45 (mỗi 15 phút), 11:00/11:15/11:30, 13:00–13:45 (mỗi 15 phút), 14:00/14:15/14:30.
+   - Intraday: 09:15→10:45 (mỗi 15 phút), 11:00/11:15/11:30, 13:00→13:45 (mỗi 15 phút), 14:00/14:15/14:30.
    - EOD: 15:00.
-   - Dừng bằng `Ctrl+C` (scheduler sẽ shutdown an toàn).
+   - Dừng với `Ctrl+C` (scheduler shutdown an toàn).
 
-## 6. Gỡ lỗi & giám sát
-- Check file `alerts_state.sqlite` để theo dõi nhãn đã gửi:
+## 📊 6. Xuất tín hiệu V12 ra CSV
+Dùng khi cần danh sách tín hiệu mua/bán lịch sử (ví dụ 07/2025–08/2025).
+```bash
+python -m src.fiin_alerts.jobs.export_v12_signals \
+  --data-path path/to/data-v2.parquet \
+  --start 2025-07-01 --end 2025-08-31 \
+  --output signals_v12_2025.csv
+```
+Yêu cầu dữ liệu phải có các cột thị trường (`market_close`, `market_MA50`, …) và giá/khối lượng (open/high/low/close, volume). Hàm `ensure_technical_indicators` sẽ tự bổ sung RSI, MACD, ATR, Bollinger, OBV, MFI nếu thiếu.
+
+## 🛠️ 7. Giám sát & xử lý sự cố
+- Kiểm tra log gửi bằng SQLite:
   ```bash
   sqlite3 alerts_state.sqlite "select ts, k from sent order by ts desc limit 10"
   ```
-- Nếu Gmail API trả `401` hoặc `invalid_grant`, chạy lại `python scripts/renew_oauth.py`.
-- Đặt `LOG_LEVEL=DEBUG` trong `.env` (hoặc biến môi trường) để xem chi tiết pipeline.
+- Lỗi Gmail `401` / `invalid_grant`: chạy lại `python scripts/renew_oauth.py` để refresh token.
+- Debug thêm: đặt `LOG_LEVEL=DEBUG` trong `.env`.
 
-## 7. Rollback
-- Khôi phục các file sửa đổi (`app/schedule/jobs_notify.py`, `src/fiin_alerts/jobs/generate_and_send_alerts.py`, `src/fiin_alerts/jobs/send_test_email.py`, `.env.example`, `requirements.txt`, `README.md`, `src/fiin_alerts/config.py`).
-- Xóa `alerts_state.sqlite` nếu muốn làm sạch bộ nhớ dedup.
-- Nếu cần quay lại SMTP/Telegram, phục hồi file/requirements cũ từ VCS.
+## 🔄 8. Rollback / dọn dẹp
+- Khôi phục file đã sửa (`app/schedule/jobs_notify.py`, `src/fiin_alerts/jobs/*.py`, `.env.example`, `requirements.txt`, `README.md`, `src/fiin_alerts/config.py`) từ VCS nếu cần.
+- Xóa `alerts_state.sqlite` để reset cơ chế chống trùng.
+- Muốn quay lại kênh gửi khác (SMTP/Telegram) thì trả lại cấu hình và requirements tương ứng.
+
+---
+
+> 📮 Liên hệ đội FTU DSTC để nhận thêm hướng dẫn hoặc quyền truy cập dữ liệu FiinQuantX.
