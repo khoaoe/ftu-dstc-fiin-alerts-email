@@ -18,16 +18,21 @@
 - `src/fiin_alerts/jobs/export_v12_signals.py`: xuất CSV tín hiệu theo khoảng thời gian.
 - (Legacy) `src/fiin_alerts/signals/v4_robust.py`: chiến lược cũ giữ làm fallback intraday.
 
-## ⚙️ Cài đặt nhanh
+## ⚙️ Chuẩn bị
+1. Để `credentials.json` (tải từ Google Cloud cấp để sử dụng GmailAPI) vào folder `secrets/`.
+2. Tạo môi trường ảo và cài đặt dependencies:
 ```bash
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
-# (tuỳ chọn) cài FiinQuantX để lấy realtime
+# cài FiinQuantX để lấy realtime
 pip install --extra-index-url https://fiinquant.github.io/fiinquantx/simple fiinquantx
+```
+3. Tạo file .env:
+```bash
 cp .env.example .env
 ```
-Khởi tạo Gmail OAuth lần đầu:
+4. Khởi tạo Gmail OAuth lần đầu:
 ```bash
 python scripts/init_oauth.py   # sinh secrets/token.json
 ```
