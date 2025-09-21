@@ -1,30 +1,30 @@
+﻿Trade Signal Alerts (Gmail API)
+Total alerts: {{ alerts|length }}
+Tickers: {{ alerts|map(attribute='ticker')|unique|join(', ') }}
 
-Trade Signal Alerts (Gmail API)
-Tổng số cảnh báo: {{ alerts|length }}
-Danh mục: {{ alerts|map(attribute='ticker')|unique|join(', ') }}
-
-Phân bổ theo sự kiện:
+By event type:
 {% set event_labels = {
-  'BUY_NEW': 'Mua mới',
-  'BUY': 'Mua',
-  'SELL_TP': 'Bán chốt lời',
-  'SELL': 'Bán',
-  'RISK': 'Cảnh báo rủi ro',
-  'TP': 'Chốt lời',
-  'SL': 'Cắt lỗ',
-  'INFO': 'Thông tin',
-  'ALERT': 'Cảnh báo'
+  'BUY_NEW': 'Buy New',
+  'BUY': 'Buy',
+  'SELL_TP': 'Sell (TP)',
+  'SELL': 'Sell',
+  'RISK': 'Risk',
+  'TP': 'Take Profit',
+  'SL': 'Stop Loss',
+  'INFO': 'Info',
+  'ALERT': 'Alert'
 } %}
 {% for group in alerts|groupby('event_type') %}
 - {{ event_labels.get(group.grouper, group.grouper) }}: {{ group.list|length }}
 {% endfor %}
 
-Chi tiết:
+Details:
 {% for a in alerts %}
-{{ loop.index }}. {{ a.ticker }} — {{ event_labels.get(a.event_type, a.event_type) }}
-   Giá: {% if a.price is not none %}{{ '%.2f'|format(a.price) }}{% else %}-{% endif %}
-   Thời điểm: {{ a.when or '-' }}
-   Ghi chú: {{ a.explain or 'Không có' }}
+{{ loop.index }}. {{ a.ticker }} – {{ event_labels.get(a.event_type, a.event_type) }}
+   Action: {% if a.event_type.startswith('BUY') %}buy{% elif a.event_type.startswith('SELL') %}sell{% else %}-{% endif %}
+   Price: {% if a.price is not none %}{{ '%.2f'|format(a.price) }}{% else %}-{% endif %}
+   Time: {{ a.when or '-' }}
+   Notes: {{ a.explain or '-' }}
 {% endfor %}
 
-Lưu ý: Các cảnh báo được tổng hợp tự động từ mô hình. Vui lòng kiểm tra thêm trước khi quyết định giao dịch.
+Note: Signals are aggregated from multiple models. Please double-check before trading.

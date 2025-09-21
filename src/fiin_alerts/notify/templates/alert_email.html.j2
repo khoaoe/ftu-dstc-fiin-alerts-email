@@ -1,24 +1,24 @@
-
+﻿
 <!DOCTYPE html>
 <html>
   <body style="margin:0;padding:24px;background:#f4f6fb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
     <div style="max-width:720px;margin:0 auto;background:#ffffff;border-radius:16px;box-shadow:0 18px 40px -24px rgba(15,23,42,0.45);overflow:hidden;">
       <div style="padding:24px 28px;background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#e2e8f0;">
         <div style="font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:#93c5fd;">Trade Signal Alerts</div>
-        <div style="margin-top:6px;font-size:28px;font-weight:700;color:#f8fafc;">{{ alerts|length }} cảnh báo mới</div>
-        <div style="margin-top:8px;font-size:14px;color:#cbd5f5;">Danh mục: {{ alerts|map(attribute='ticker')|unique|join(', ') }}</div>
+        <div style="margin-top:6px;font-size:28px;font-weight:700;color:#f8fafc;">{{ alerts|length }} alerts</div>
+        <div style="margin-top:8px;font-size:14px;color:#cbd5f5;">Tickers: {{ alerts|map(attribute='ticker')|unique|join(', ') }}</div>
       </div>
       <div style="padding:24px 28px;">
         {% set event_labels = {
-          'BUY_NEW': 'Mua mới',
-          'BUY': 'Mua',
-          'SELL_TP': 'Bán chốt lời',
-          'SELL': 'Bán',
-          'RISK': 'Cảnh báo rủi ro',
-          'TP': 'Chốt lời',
-          'SL': 'Cắt lỗ',
-          'INFO': 'Thông tin',
-          'ALERT': 'Cảnh báo'
+          'BUY_NEW': 'Buy New',
+          'BUY': 'Buy',
+          'SELL_TP': 'Sell (TP)',
+          'SELL': 'Sell',
+          'RISK': 'Risk',
+          'TP': 'Take Profit',
+          'SL': 'Stop Loss',
+          'INFO': 'Info',
+          'ALERT': 'Alert'
         } %}
         {% set event_colors = {
           'BUY_NEW': '#16a34a',
@@ -33,11 +33,11 @@
         } %}
 
         <div style="margin-bottom:18px;padding:16px 18px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc;">
-          <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:#1e293b;">Phân bổ theo sự kiện</div>
+          <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:#1e293b;">By Event Type</div>
           <ul style="margin:0;padding-left:18px;color:#475569;font-size:13px;">
             {% for group in alerts|groupby('event_type') %}
               {% set label = event_labels.get(group.grouper, group.grouper) %}
-              <li>{{ label }}: <strong>{{ group.list|length }}</strong> mã</li>
+              <li>{{ label }}: <strong>{{ group.list|length }}</strong></li>
             {% endfor %}
           </ul>
         </div>
@@ -46,16 +46,18 @@
           <thead>
             <tr style="background:#0f172a;color:#f8fafc;">
               <th style="padding:12px 10px;text-align:left;border-top-left-radius:10px;">Ticker</th>
-              <th style="padding:12px 10px;text-align:left;">Sự kiện</th>
-              <th style="padding:12px 10px;text-align:right;">Giá</th>
-              <th style="padding:12px 10px;text-align:left;">Thời điểm</th>
-              <th style="padding:12px 10px;text-align:left;border-top-right-radius:10px;">Ghi chú</th>
+              <th style="padding:12px 10px;text-align:left;">Event</th>
+              <th style="padding:12px 10px;text-align:left;">Action</th>
+              <th style="padding:12px 10px;text-align:right;">Price</th>
+              <th style="padding:12px 10px;text-align:left;">Time</th>
+              <th style="padding:12px 10px;text-align:left;border-top-right-radius:10px;">Notes</th>
             </tr>
           </thead>
           <tbody>
             {% for a in alerts %}
               {% set label = event_labels.get(a.event_type, a.event_type) %}
               {% set color = event_colors.get(a.event_type, '#475569') %}
+              {% set action = 'Buy' if a.event_type.startswith('BUY') else ('Sell' if a.event_type.startswith('SELL') else '-') %}
               <tr style="background:{{ loop.index is odd and '#ffffff' or '#f9fbff' }};border-bottom:1px solid #e2e8f0;">
                 <td style="padding:12px 10px;font-weight:600;color:#1e293b;">{{ a.ticker }}</td>
                 <td style="padding:12px 10px;">
@@ -63,20 +65,21 @@
                     {{ label }}
                   </span>
                 </td>
+                <td style="padding:12px 10px;color:#1f2937;">{{ action }}</td>
                 <td style="padding:12px 10px;text-align:right;color:#0f172a;font-variant-numeric:tabular-nums;">
                   {% if a.price is not none %}{{ '%.2f'|format(a.price) }}{% else %}-{% endif %}
                 </td>
                 <td style="padding:12px 10px;color:#334155;">{{ a.when or '-' }}</td>
-                <td style="padding:12px 10px;color:#475569;">{{ a.explain or '—' }}</td>
+                <td style="padding:12px 10px;color:#475569;">{{ a.explain or '-' }}</td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
 
         <div style="margin-top:24px;padding:16px 18px;border-radius:12px;background:#eef2ff;color:#312e81;font-size:12px;line-height:1.5;">
-          <strong>Lưu ý:</strong> Các cảnh báo được tổng hợp tự động từ mô hình. Vui lòng kiểm tra thêm trước khi ra quyết định giao dịch.
+          <strong>Note:</strong> Signals are aggregated from multiple models. Please double‑check before executing trades.
         </div>
       </div>
     </div>
   </body>
-</html>
+  </html>
