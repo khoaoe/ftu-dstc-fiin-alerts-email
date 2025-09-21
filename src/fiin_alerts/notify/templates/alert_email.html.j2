@@ -4,7 +4,7 @@
   <body style="margin:0;padding:24px;background:#f4f6fb;font-family:'Segoe UI',Arial,sans-serif;color:#0f172a;">
     <div style="max-width:720px;margin:0 auto;background:#ffffff;border-radius:16px;box-shadow:0 18px 40px -24px rgba(15,23,42,0.45);overflow:hidden;">
       <div style="padding:24px 28px;background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#e2e8f0;">
-        <div style="font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:#93c5fd;">FTU-DSTC Signal Alerts</div>
+        <div style="font-size:13px;letter-spacing:0.18em;text-transform:uppercase;color:#93c5fd;">Trade Signal Alerts</div>
         <div style="margin-top:6px;font-size:28px;font-weight:700;color:#f8fafc;">{{ alerts|length }} cảnh báo mới</div>
         <div style="margin-top:8px;font-size:14px;color:#cbd5f5;">Danh mục: {{ alerts|map(attribute='ticker')|unique|join(', ') }}</div>
       </div>
