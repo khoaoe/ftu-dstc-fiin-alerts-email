@@ -85,8 +85,11 @@ def _dedupe_alerts(alerts: List[AlertItem], mode: str) -> tuple[list[AlertItem],
 
 
 def _build_subject(mode: str, count: int) -> str:
-    # Fixed subject as requested
-    return "TRADE SIGNAL ALERTS"
+    mode_tag = f"[{mode}] " if mode and mode != "BOTH" else ""
+    if count == 1:
+        return f"{SUBJECT_PREFIX} {mode_tag} 1 alert"
+    else:
+        return f"{SUBJECT_PREFIX}{mode_tag}{count} alerts"
 
 
 def _log_summary(alerts: list[AlertItem]) -> None:
