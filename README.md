@@ -16,10 +16,10 @@
 | `src/fiin_alerts/notify/gmail_client.py` | Bao bọc Gmail API `users.messages.send`, quản lý OAuth token |
 | `src/fiin_alerts/jobs/send_test_email.py` | Gửi email thử nhanh, tiện kiểm tra OAuth |
 | `app/schedule/jobs_notify.py` | APScheduler, lập lịch intraday/EOD cho `run_once` |
-| `src/fiin_alerts/signals/v12_strategy.py` | Logic screener V12 (chuẩn hóa dữ liệu, backtest, trade log) |
-| `src/fiin_alerts/jobs/export_v12_signals.py` | CLI xuất CSV tín hiệu V12 theo khoảng thời gian |
+| `src/fiin_alerts/signals/v12_strategy.py` | Logic screener (chuẩn hóa dữ liệu, backtest, trade log) |
+| `src/fiin_alerts/jobs/export_v12_signals.py` | CLI xuất CSV tín hiệu theo khoảng thời gian |
 
-_Version V4 (`src/fiin_alerts/signals/v4_robust.py`) vẫn giữ để tham chiếu hoặc fallback._
+_Chiến lược cũ hơn "v4 robust"  (`src/fiin_alerts/signals/v4_robust.py`) vẫn giữ để tham chiếu hoặc fallback._
 
 ## ⚙️ 3. Chuẩn bị môi trường
 ```bash
@@ -69,7 +69,7 @@ Tiếp tục cấu hình Gmail OAuth:
    - EOD: 15:00.
    - Dừng với `Ctrl+C` (scheduler shutdown an toàn).
 
-## 📊 6. Xuất tín hiệu V12 ra CSV
+## 📊 6. Xuất tín hiệu ra CSV
 Dùng khi cần danh sách tín hiệu mua/bán lịch sử (ví dụ 07/2025–08/2025).
 ```bash
 python -m src.fiin_alerts.jobs.export_v12_signals \
@@ -93,5 +93,3 @@ Yêu cầu dữ liệu phải có các cột thị trường (`market_close`, `m
 - Muốn quay lại kênh gửi khác (SMTP/Telegram) thì trả lại cấu hình và requirements tương ứng.
 
 ---
-
-> 📮 Liên hệ đội FTU DSTC để nhận thêm hướng dẫn hoặc quyền truy cập dữ liệu FiinQuantX.
