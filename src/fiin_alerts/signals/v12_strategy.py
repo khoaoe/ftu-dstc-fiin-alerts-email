@@ -204,6 +204,8 @@ def ensure_technical_indicators(data: pd.DataFrame) -> pd.DataFrame:
         if "market_boll_width" not in working.columns:
             _, _, market_width = _compute_bollinger(market_daily["market_close"])
             working["market_boll_width"] = working["date"].map(market_width)
+            # Align with original v12.py behavior: provide a reasonable default
+            working["market_boll_width"] = working["market_boll_width"].fillna(0.5)
 
         if "market_adx" not in working.columns and {"market_high", "market_low"}.issubset(working.columns):
             plus_dm = (market_daily["market_high"].diff().clip(lower=0)).fillna(0.0)
@@ -219,6 +221,13 @@ def ensure_technical_indicators(data: pd.DataFrame) -> pd.DataFrame:
             minus_di = 100 * (minus_dm.rolling(14, min_periods=14).sum() / atr.replace(0.0, np.nan))
             dx = (abs(plus_di - minus_di) / (plus_di + minus_di + 1e-9) * 100).rolling(14, min_periods=14).mean()
             working["market_adx"] = working["date"].map(dx.ffill())
+
+        # Fallback: if we still don't have market_adx (e.g., parquet lacks market_high/market_low),
+        # set a neutral baseline (25) to mirror v12.py defaulting behavior.
+        if "market_adx" not in working.columns:
+            working["market_adx"] = 25.0
+        else:
+            working["market_adx"] = working["market_adx"].fillna(25.0)
 
     missing = [col for col in REQUIRED_COLUMNS if col not in working.columns]
     if missing:
@@ -670,8 +679,8 @@ def run_v12_backtest(
                 "shares": actual_shares,
                 "entry_price": entry_price,
                 "avg_cost": entry_price,
-                "tp": entry_price + (atr_multiplier * row["atr_14"]),
-                "sl": entry_price - (atr_multiplier * row["atr_14"]),
+                "tp": entry_price + (atr_mult * row["atr_14"]),
+                "sl": entry_price - (atr_mult * row["atr_14"]),
                 "trailing_sl": entry_price * (1 - trailing_stop_pct),
                 "highest_price": entry_price,
                 "end_date": current_date + pd.Timedelta(days=max_hold_days),
