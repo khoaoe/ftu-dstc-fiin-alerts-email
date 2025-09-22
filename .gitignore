@@ -29,3 +29,4 @@ AGENTS.md
 v4_robust.py
 v12.py
 v12_ipynb
+*.parquet

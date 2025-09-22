@@ -32,6 +32,9 @@ pip install --extra-index-url https://fiinquant.github.io/fiinquantx/simple fiin
 ```bash
 cp .env.example .env
 ```
+4. Tải data:
+- tải file data "data-v2.parquet" từ link https://drive.google.com/file/d/1oswrO_XOYhNorxSLNLOPnZMvUVfAaSUC/view?usp=sharing
+- đưa file vào folder `data/`
 4. Khởi tạo Gmail OAuth lần đầu:
 ```bash
 python scripts/init_oauth.py   # sinh secrets/token.json

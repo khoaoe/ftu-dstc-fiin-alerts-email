@@ -12,16 +12,19 @@ def fetch_intraday(username: str, password: str, tickers: list[str], minutes: in
         LOG.warning("FiinQuantX not installed; skipping realtime fetch.")
         return pd.DataFrame()
 
+    # 1) Login
+    client = fq.FiinSession(username=username, password=password).login()
+    
+    # 2) Time range
     from datetime import datetime, timedelta
     since = (datetime.now() - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M")
 
-    client = fq.FiinSession(username=username, password=password).login()
     last_exc: Exception | None = None
     raw = None
     for attempt in range(3):
         try:
             raw = client.Fetch_Trading_Data(
-                realtime=True,
+                realtime=False,
                 tickers=tickers,
                 fields=["open","high","low","close","volume","bu","sd","fb","fs","fn"],
                 adjusted=True,
